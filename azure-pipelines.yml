@@ -145,6 +145,7 @@ stages:
  
           echo "Applying Terraform plan"
           terraform apply \
+          -var="subscription_id='7624824a-7f57-4902-9b9f-9150b5aa9a9d'" \
             -input=false \
             "$(Pipeline.Workspace)/terraform-plan/tfplan"
  
