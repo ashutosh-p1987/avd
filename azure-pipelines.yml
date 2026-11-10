@@ -1,8 +1,7 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
+# ==========================================
+# Azure DevOps - Terraform CI/CD Pipeline
+# ==========================================
+ 
 trigger:
   branches:
     include:
@@ -12,88 +11,144 @@ pool:
   vmImage: ubuntu-latest
  
 variables:
-  azureServiceConnection: 'sc-azure-terraform'
+  azureServiceConnection: 'test123'
   terraformVersion: '1.9.8'
+  terraformDirectory: '$(Build.SourcesDirectory)'
  
 stages:
  
-# Stage 1: Terraform Validation and Plan
+# ==========================================
+# STAGE 1 - TERRAFORM PLAN
+# ==========================================
+ 
 - stage: TerraformPlan
   displayName: 'Terraform Plan'
  
   jobs:
   - job: Plan
+    displayName: 'Validate and Plan'
+ 
     steps:
  
     - checkout: self
  
-    - task: TerraformInstaller@1
-      displayName: 'Install Terraform'
-      inputs:
-        terraformVersion: '$(terraformVersion)'
+    # Install Terraform CLI
+    - bash: |
+        set -euo pipefail
  
+        sudo apt-get update
+        sudo apt-get install -y unzip curl
+ 
+        curl -fsSLo terraform.zip \
+          https://releases.hashicorp.com/terraform/$(terraformVersion)/terraform_$(terraformVersion)_linux_amd64.zip
+ 
+        unzip -o terraform.zip
+        sudo install terraform /usr/local/bin/terraform
+ 
+        terraform version
+      displayName: 'Install Terraform'
+ 
+    # Azure Authentication and Terraform Plan
     - task: AzureCLI@2
-      displayName: 'Terraform Init and Plan'
+      displayName: 'Terraform Init Validate Plan'
       inputs:
         azureSubscription: '$(azureServiceConnection)'
         scriptType: bash
         scriptLocation: inlineScript
+        workingDirectory: '$(terraformDirectory)'
         inlineScript: |
-          set -e
+          set -euo pipefail
  
-          cd $(Build.SourcesDirectory)
+          echo "Checking Azure login"
+          az account show
  
+          echo "Terraform initialization"
           terraform init -input=false
  
+          echo "Terraform formatting"
           terraform fmt -check -recursive
  
+          echo "Terraform validation"
           terraform validate
  
-          terraform plan -out=tfplan
+          echo "Terraform plan"
+          terraform plan \
+            -input=false \
+            -out=tfplan
  
-    - publish: '$(Build.SourcesDirectory)/tfplan'
+          terraform show -no-color tfplan > plan.txt
+ 
+    # Publish Terraform Plan
+    - publish: '$(terraformDirectory)/tfplan'
       artifact: terraform-plan
+      displayName: 'Publish Terraform Plan'
+ 
+    - publish: '$(terraformDirectory)/plan.txt'
+      artifact: terraform-report
+      displayName: 'Publish Terraform Report'
  
  
-# Stage 2: Terraform Deployment
+# ==========================================
+# STAGE 2 - TERRAFORM APPLY
+# ==========================================
+ 
 - stage: TerraformApply
   displayName: 'Terraform Apply'
   dependsOn: TerraformPlan
+  condition: succeeded()
  
   jobs:
-  - deployment: DeployAzure
-    displayName: 'Deploy Azure Resources'
-    environment: terraform-dev
+  - job: DeployAzure
+    displayName: 'Deploy Azure Infrastructure'
  
-    strategy:
-      runOnce:
-        deploy:
-          steps:
+    steps:
  
-          - checkout: self
+    - checkout: self
  
-          - download: current
-            artifact: terraform-plan
+    # Install Terraform CLI
+    - bash: |
+        set -euo pipefail
  
-          - task: TerraformInstaller@1
-            inputs:
-              terraformVersion: '$(terraformVersion)'
+        sudo apt-get update
+        sudo apt-get install -y unzip curl
  
-          - task: AzureCLI@2
-            displayName: 'Apply Terraform'
-            inputs:
-              azureSubscription: '$(azureServiceConnection)'
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                set -e
+        curl -fsSLo terraform.zip \
+          https://releases.hashicorp.com/terraform/$(terraformVersion)/terraform_$(terraformVersion)_linux_amd64.zip
  
-                cd $(Build.SourcesDirectory)
+        unzip -o terraform.zip
+        sudo install terraform /usr/local/bin/terraform
  
-                terraform init -input=false
+        terraform version
+      displayName: 'Install Terraform'
  
-                terraform apply \
-                  -input=false \
-                  "$(Pipeline.Workspace)/terraform-plan/tfplan"
+    # Download Terraform Plan
+    - download: current
+      artifact: terraform-plan
+      displayName: 'Download Terraform Plan'
  
-                terraform output
+    # Azure Authentication and Apply
+    - task: AzureCLI@2
+      displayName: 'Terraform Apply'
+      inputs:
+        azureSubscription: '$(azureServiceConnection)'
+        scriptType: bash
+        scriptLocation: inlineScript
+        workingDirectory: '$(terraformDirectory)'
+        inlineScript: |
+          set -euo pipefail
+ 
+          echo "Checking Azure subscription"
+          az account show
+ 
+          echo "Terraform initialization"
+          terraform init -input=false
+ 
+          echo "Applying Terraform plan"
+          terraform apply \
+            -input=false \
+            "$(Pipeline.Workspace)/terraform-plan/tfplan"
+ 
+          echo "Deployment outputs"
+          terraform output
+ 
+          echo "Terraform deployment completed"
