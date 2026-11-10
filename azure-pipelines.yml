@@ -4,16 +4,96 @@
 # https://aka.ms/yaml
 
 trigger:
-- main
-
+  branches:
+    include:
+      - main
+ 
 pool:
   vmImage: ubuntu-latest
-
-steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
-
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+ 
+variables:
+  azureServiceConnection: 'sc-azure-terraform'
+  terraformVersion: '1.9.8'
+ 
+stages:
+ 
+# Stage 1: Terraform Validation and Plan
+- stage: TerraformPlan
+  displayName: 'Terraform Plan'
+ 
+  jobs:
+  - job: Plan
+    steps:
+ 
+    - checkout: self
+ 
+    - task: TerraformInstaller@1
+      displayName: 'Install Terraform'
+      inputs:
+        terraformVersion: '$(terraformVersion)'
+ 
+    - task: AzureCLI@2
+      displayName: 'Terraform Init and Plan'
+      inputs:
+        azureSubscription: '$(azureServiceConnection)'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+ 
+          cd $(Build.SourcesDirectory)
+ 
+          terraform init -input=false
+ 
+          terraform fmt -check -recursive
+ 
+          terraform validate
+ 
+          terraform plan -out=tfplan
+ 
+    - publish: '$(Build.SourcesDirectory)/tfplan'
+      artifact: terraform-plan
+ 
+ 
+# Stage 2: Terraform Deployment
+- stage: TerraformApply
+  displayName: 'Terraform Apply'
+  dependsOn: TerraformPlan
+ 
+  jobs:
+  - deployment: DeployAzure
+    displayName: 'Deploy Azure Resources'
+    environment: terraform-dev
+ 
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+ 
+          - checkout: self
+ 
+          - download: current
+            artifact: terraform-plan
+ 
+          - task: TerraformInstaller@1
+            inputs:
+              terraformVersion: '$(terraformVersion)'
+ 
+          - task: AzureCLI@2
+            displayName: 'Apply Terraform'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+ 
+                cd $(Build.SourcesDirectory)
+ 
+                terraform init -input=false
+ 
+                terraform apply \
+                  -input=false \
+                  "$(Pipeline.Workspace)/terraform-plan/tfplan"
+ 
+                terraform output
