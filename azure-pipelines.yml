@@ -40,7 +40,7 @@ variables:
   terraformWorkingDirectory: '$(Build.SourcesDirectory)'
 
   # Update these values
-  azureServiceConnection: 'YOUR-AZURE-SERVICE-CONNECTION'
+  azureServiceConnection: 'scret'
   tfStateResourceGroup: 'rg-terraform-state'
   tfStateStorageAccount: 'YOURSTORAGEACCOUNT'
   tfStateContainer: 'tfstate'
