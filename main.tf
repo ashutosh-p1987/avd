@@ -324,10 +324,10 @@ resource "azurerm_role_assignment" "vm_admin_login" {
 }
 
 # Start VM on Connect: the AVD service needs permission to power on VMs.
-data "azuread_service_principal" "avd" {
-  count     = var.start_vm_on_connect ? 1 : 0
-  client_id = local.avd_service_principal_client_id
-}
+#data "azuread_service_principal" "avd" {
+ # count     = var.start_vm_on_connect ? 1 : 0
+  #client_id = local.avd_service_principal_client_id
+#}
 
 resource "azurerm_role_assignment" "avd_power_on" {
   count                = var.start_vm_on_connect ? 1 : 0
