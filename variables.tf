@@ -101,7 +101,7 @@ variable "session_host_count" {
   }
 }
 
-variable "vm_size_1" {
+variable "vm_size" {
   description = "Azure VM size for AVD session hosts."
   type        = string
   default     = "Standard_D4s_v5"
