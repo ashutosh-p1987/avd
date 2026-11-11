@@ -18,12 +18,12 @@ parameters:
     default: 'southeastasia'
 
   - name: vmCount
-    displayName: Number of AVD VMs
+    displayName: Number of AVD Session Hosts
     type: number
-    default: 5
+    default: 2
 
   - name: vmSize
-    displayName: Azure VM Size
+    displayName: AVD VM Size
     type: string
     default: 'Standard_D4s_v5'
 
@@ -38,11 +38,11 @@ parameters:
 variables:
   terraformVersion: '1.9.8'
   terraformWorkingDirectory: '$(Build.SourcesDirectory)'
-  azureServiceConnection: 'scret'
 
-  # Remote Terraform state configuration
-  tfStateResourceGroup: 'avdrg'
-  tfStateStorageAccount: 'terrafotmstate'
+  # Update these values
+  azureServiceConnection: 'YOUR-AZURE-SERVICE-CONNECTION'
+  tfStateResourceGroup: 'rg-terraform-state'
+  tfStateStorageAccount: 'YOURSTORAGEACCOUNT'
   tfStateContainer: 'tfstate'
   tfStateKey: 'avd/terraform.tfstate'
 
@@ -51,14 +51,17 @@ pool:
 
 stages:
 
-# ------------------------------------------------
-# STAGE 1 - VALIDATE
-# ------------------------------------------------
+# ==================================================
+# STAGE 1: VALIDATE
+# ==================================================
+
 - stage: Validate
   displayName: Terraform Validate
 
   jobs:
     - job: TerraformValidate
+      displayName: Validate Terraform Configuration
+
       steps:
         - checkout: self
 
@@ -67,11 +70,17 @@ stages:
           inputs:
             targetType: inline
             script: |
-              set -e
+              set -euo pipefail
+
               TF_VERSION="$(terraformVersion)"
-              wget -q https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
-              unzip -o terraform_${TF_VERSION}_linux_amd64.zip
+
+              wget -q \
+                "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+
+              unzip -o "terraform_${TF_VERSION}_linux_amd64.zip"
+
               sudo install terraform /usr/local/bin/terraform
+
               terraform version
 
         - task: Bash@3
@@ -80,12 +89,20 @@ stages:
             targetType: inline
             workingDirectory: '$(terraformWorkingDirectory)'
             script: |
-              set -e
-              echo "Terraform directory: $(terraformWorkingDirectory)"
+              set -euo pipefail
+
+              echo "Terraform working directory:"
+              pwd
+
+              echo "Terraform files:"
               ls -la
+
               test -f main.tf
               test -f variables.tf
               test -f providers.tf
+              test -f backend.tf
+
+              echo "Terraform configuration verified."
 
         - task: AzureCLI@2
           displayName: Terraform Format and Validate
@@ -94,11 +111,12 @@ stages:
             scriptType: bash
             scriptLocation: inlineScript
             inlineScript: |
-              set -e
+              set -euo pipefail
+
               cd "$(terraformWorkingDirectory)"
 
               export ARM_USE_CLI=true
-              export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+              export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
 
               terraform fmt -check -diff -recursive
 
@@ -111,15 +129,18 @@ stages:
 
               terraform validate
 
-# ------------------------------------------------
-# STAGE 2 - PLAN
-# ------------------------------------------------
+# ==================================================
+# STAGE 2: PLAN
+# ==================================================
+
 - stage: Plan
   displayName: Terraform Plan
   dependsOn: Validate
 
   jobs:
     - job: TerraformPlan
+      displayName: Generate Terraform Plan
+
       steps:
         - checkout: self
 
@@ -128,11 +149,17 @@ stages:
           inputs:
             targetType: inline
             script: |
-              set -e
+              set -euo pipefail
+
               TF_VERSION="$(terraformVersion)"
-              wget -q https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
-              unzip -o terraform_${TF_VERSION}_linux_amd64.zip
+
+              wget -q \
+                "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+
+              unzip -o "terraform_${TF_VERSION}_linux_amd64.zip"
+
               sudo install terraform /usr/local/bin/terraform
+
               terraform version
 
         - task: AzureCLI@2
@@ -142,11 +169,16 @@ stages:
             scriptType: bash
             scriptLocation: inlineScript
             inlineScript: |
-              set -e
+              set -euo pipefail
+
               cd "$(terraformWorkingDirectory)"
 
               export ARM_USE_CLI=true
-              export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+              export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+
+              SUBSCRIPTION_ID="$ARM_SUBSCRIPTION_ID"
+
+              mkdir -p "$(Build.ArtifactStagingDirectory)"
 
               terraform init -input=false \
                 -backend-config="resource_group_name=$(tfStateResourceGroup)" \
@@ -155,30 +187,38 @@ stages:
                 -backend-config="key=$(tfStateKey)" \
                 -backend-config="use_azuread_auth=true"
 
+              terraform validate
+
               terraform plan \
                 -input=false \
                 -lock-timeout=5m \
-                -var="resourceGroup=${{ parameters.resourceGroup }}" \
+                -var="resource_group_name=${{ parameters.resourceGroup }}" \
                 -var="location=${{ parameters.location }}" \
-                -var="vmCount=${{ parameters.vmCount }}" \
-                -var="vmSize=${{ parameters.vmSize }}" \
+                -var="subscription_id=${SUBSCRIPTION_ID}" \
+                -var="session_host_count=${{ parameters.vmCount }}" \
+                -var="vm_size_1=${{ parameters.vmSize }}" \
                 -out="$(Build.ArtifactStagingDirectory)/tfplan"
 
         - publish: '$(Build.ArtifactStagingDirectory)/tfplan'
           artifact: terraform-plan
           displayName: Publish Terraform Plan
 
-# ------------------------------------------------
-# STAGE 3 - MANUAL APPROVAL
-# ------------------------------------------------
+# ==================================================
+# STAGE 3: APPROVAL
+# ==================================================
+
 - stage: Approval
-  displayName: Apply Approval
+  displayName: Manual Approval
   dependsOn: Plan
-  condition: and(succeeded(), eq('${{ parameters.deploymentAction }}', 'apply'))
+
+  condition: and(
+    succeeded(),
+    eq('${{ parameters.deploymentAction }}', 'apply')
+    )
 
   jobs:
     - job: ManualApproval
-      displayName: Approve Terraform Apply
+      displayName: Approve Terraform Deployment
       pool: server
       timeoutInMinutes: 1440
 
@@ -189,14 +229,16 @@ stages:
             notifyUsers: ''
             instructions: |
               Review the Terraform plan artifact.
-              Approve to continue with infrastructure deployment.
+              Approve to proceed with AVD infrastructure deployment.
             onTimeout: reject
 
-# ------------------------------------------------
-# STAGE 4 - APPLY
-# ------------------------------------------------
+# ==================================================
+# STAGE 4: APPLY
+# ==================================================
+
 - stage: Apply
   displayName: Terraform Apply
+
   dependsOn:
     - Plan
     - Approval
@@ -208,7 +250,7 @@ stages:
 
   jobs:
     - job: TerraformApply
-      displayName: Apply Infrastructure
+      displayName: Deploy AVD Infrastructure
 
       steps:
         - checkout: self
@@ -221,11 +263,17 @@ stages:
           inputs:
             targetType: inline
             script: |
-              set -e
+              set -euo pipefail
+
               TF_VERSION="$(terraformVersion)"
-              wget -q https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
-              unzip -o terraform_${TF_VERSION}_linux_amd64.zip
+
+              wget -q \
+                "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+
+              unzip -o "terraform_${TF_VERSION}_linux_amd64.zip"
+
               sudo install terraform /usr/local/bin/terraform
+
               terraform version
 
         - task: AzureCLI@2
@@ -235,11 +283,12 @@ stages:
             scriptType: bash
             scriptLocation: inlineScript
             inlineScript: |
-              set -e
+              set -euo pipefail
+
               cd "$(terraformWorkingDirectory)"
 
               export ARM_USE_CLI=true
-              export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+              export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
 
               terraform init -input=false \
                 -backend-config="resource_group_name=$(tfStateResourceGroup)" \
@@ -247,6 +296,8 @@ stages:
                 -backend-config="container_name=$(tfStateContainer)" \
                 -backend-config="key=$(tfStateKey)" \
                 -backend-config="use_azuread_auth=true"
+
+              test -f "$(Pipeline.Workspace)/terraform-plan/tfplan"
 
               terraform apply \
                 -input=false \
