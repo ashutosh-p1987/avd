@@ -11,7 +11,7 @@ pool:
   vmImage: ubuntu-latest
  
 variables:
-  azureServiceConnection: 'test123'
+  azureServiceConnection: 'scret'
   terraformVersion: '1.9.8'
   terraformDirectory: '$(Build.SourcesDirectory)'
  
