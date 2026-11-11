@@ -209,35 +209,6 @@ stages:
           displayName: Publish Terraform Plan
 
 # ==================================================
-# STAGE 3: MANUAL APPROVAL
-# ==================================================
-
-- stage: Approval
-  displayName: Manual Approval
-  dependsOn: Plan
-
-  condition: and(
-    succeeded(),
-    eq('${{ parameters.deploymentAction }}', 'apply')
-    )
-
-  jobs:
-    - job: ManualApproval
-      displayName: Approve Terraform Deployment
-      pool: server
-      timeoutInMinutes: 1440
-
-      steps:
-        - task: ManualValidation@1
-          timeoutInMinutes: 1440
-          inputs:
-            notifyUsers: ''
-            instructions: |
-              Review the Terraform plan artifact.
-              Approve to continue with AVD infrastructure deployment.
-            onTimeout: reject
-
-# ==================================================
 # STAGE 4: APPLY
 # ==================================================
 
@@ -246,7 +217,6 @@ stages:
 
   dependsOn:
     - Plan
-    - Approval
 
   condition: and(
     succeeded(),
