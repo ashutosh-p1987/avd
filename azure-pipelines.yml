@@ -1,30 +1,34 @@
 
-trigger: none
+trigger:
+  branches:
+    include:
+      - main
+
 pr: none
 
 parameters:
   - name: resourceGroup
-    displayName: Resource Group
+    displayName: Azure Resource Group
     type: string
-    default: rg-avd
+    default: 'rg-avd'
 
   - name: location
     displayName: Azure Region
     type: string
-    default: southeastasia
+    default: 'southeastasia'
 
   - name: vmCount
-    displayName: VM Count
+    displayName: Number of AVD VMs
     type: number
-    default: 2
+    default: 5
 
   - name: vmSize
-    displayName: VM Size
+    displayName: Azure VM Size
     type: string
-    default: Standard_D4s_v5
+    default: 'Standard_D4s_v5'
 
   - name: deploymentAction
-    displayName: Deployment Action
+    displayName: Terraform Action
     type: string
     default: plan
     values:
@@ -33,269 +37,218 @@ parameters:
 
 variables:
   terraformVersion: '1.9.8'
-  terraformWorkingDirectory: '$(System.DefaultWorkingDirectory)/terraform'
+  terraformWorkingDirectory: '$(Build.SourcesDirectory)'
   azureServiceConnection: 'scret'
-  artifactName: 'terraform-plan'
+
+  # Remote Terraform state configuration
+  tfStateResourceGroup: 'avdrg'
+  tfStateStorageAccount: 'terrafotmstate'
+  tfStateContainer: 'tfstate'
+  tfStateKey: 'avd/terraform.tfstate'
+
+pool:
+  vmImage: ubuntu-latest
 
 stages:
 
-# ==========================================
-# STAGE 1 - TERRAFORM VALIDATION
-# ==========================================
-
+# ------------------------------------------------
+# STAGE 1 - VALIDATE
+# ------------------------------------------------
 - stage: Validate
-  displayName: Terraform Init and Validate
+  displayName: Terraform Validate
 
   jobs:
-  - job: TerraformValidate
-    displayName: Validate Terraform
+    - job: TerraformValidate
+      steps:
+        - checkout: self
 
-    pool:
-      vmImage: ubuntu-latest
+        - task: Bash@3
+          displayName: Install Terraform
+          inputs:
+            targetType: inline
+            script: |
+              set -e
+              TF_VERSION="$(terraformVersion)"
+              wget -q https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
+              unzip -o terraform_${TF_VERSION}_linux_amd64.zip
+              sudo install terraform /usr/local/bin/terraform
+              terraform version
 
-    steps:
-    - checkout: self
+        - task: Bash@3
+          displayName: Verify Terraform Files
+          inputs:
+            targetType: inline
+            workingDirectory: '$(terraformWorkingDirectory)'
+            script: |
+              set -e
+              echo "Terraform directory: $(terraformWorkingDirectory)"
+              ls -la
+              test -f main.tf
+              test -f variables.tf
+              test -f providers.tf
 
-    - bash: |
-        set -euo pipefail
+        - task: AzureCLI@2
+          displayName: Terraform Format and Validate
+          inputs:
+            azureSubscription: '$(azureServiceConnection)'
+            scriptType: bash
+            scriptLocation: inlineScript
+            inlineScript: |
+              set -e
+              cd "$(terraformWorkingDirectory)"
 
-        TF_VERSION="$(terraformVersion)"
+              export ARM_USE_CLI=true
+              export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 
-        echo "Installing Terraform $TF_VERSION"
+              terraform fmt -check -diff -recursive
 
-        curl -fsSLo /tmp/terraform.zip \
-          "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+              terraform init -input=false \
+                -backend-config="resource_group_name=$(tfStateResourceGroup)" \
+                -backend-config="storage_account_name=$(tfStateStorageAccount)" \
+                -backend-config="container_name=$(tfStateContainer)" \
+                -backend-config="key=$(tfStateKey)" \
+                -backend-config="use_azuread_auth=true"
 
-        unzip -o /tmp/terraform.zip -d /tmp/terraform
+              terraform validate
 
-        sudo install /tmp/terraform/terraform /usr/local/bin/terraform
-
-        terraform version
-      displayName: Install Terraform
-
-    - task: AzureCLI@2
-      displayName: Terraform Format, Init and Validate
-      inputs:
-        azureSubscription: $(azureServiceConnection)
-        scriptType: bash
-        scriptLocation: inlineScript
-        workingDirectory: $(terraformWorkingDirectory)
-        inlineScript: |
-          set -euo pipefail
-
-          echo "Terraform Formatting"
-
-          terraform fmt -check -diff -recursive
-
-          echo "Terraform Init"
-
-          terraform init -input=false
-
-          echo "Terraform Validate"
-
-          terraform validate
-
-          echo "Validation completed successfully"
-
-      env:
-        ARM_USE_CLI: 'true'
-        TF_IN_AUTOMATION: 'true'
-
-# ==========================================
-# STAGE 2 - TERRAFORM PLAN
-# ==========================================
-
+# ------------------------------------------------
+# STAGE 2 - PLAN
+# ------------------------------------------------
 - stage: Plan
   displayName: Terraform Plan
-
   dependsOn: Validate
-  condition: succeeded()
 
   jobs:
-  - job: TerraformPlan
-    displayName: Generate Terraform Plan
+    - job: TerraformPlan
+      steps:
+        - checkout: self
 
-    pool:
-      vmImage: ubuntu-latest
+        - task: Bash@3
+          displayName: Install Terraform
+          inputs:
+            targetType: inline
+            script: |
+              set -e
+              TF_VERSION="$(terraformVersion)"
+              wget -q https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
+              unzip -o terraform_${TF_VERSION}_linux_amd64.zip
+              sudo install terraform /usr/local/bin/terraform
+              terraform version
 
-    steps:
-    - checkout: self
+        - task: AzureCLI@2
+          displayName: Create Terraform Plan
+          inputs:
+            azureSubscription: '$(azureServiceConnection)'
+            scriptType: bash
+            scriptLocation: inlineScript
+            inlineScript: |
+              set -e
+              cd "$(terraformWorkingDirectory)"
 
-    - bash: |
-        set -euo pipefail
+              export ARM_USE_CLI=true
+              export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 
-        TF_VERSION="$(terraformVersion)"
+              terraform init -input=false \
+                -backend-config="resource_group_name=$(tfStateResourceGroup)" \
+                -backend-config="storage_account_name=$(tfStateStorageAccount)" \
+                -backend-config="container_name=$(tfStateContainer)" \
+                -backend-config="key=$(tfStateKey)" \
+                -backend-config="use_azuread_auth=true"
 
-        curl -fsSLo /tmp/terraform.zip \
-          "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+              terraform plan \
+                -input=false \
+                -lock-timeout=5m \
+                -var="resourceGroup=${{ parameters.resourceGroup }}" \
+                -var="location=${{ parameters.location }}" \
+                -var="vmCount=${{ parameters.vmCount }}" \
+                -var="vmSize=${{ parameters.vmSize }}" \
+                -out="$(Build.ArtifactStagingDirectory)/tfplan"
 
-        unzip -o /tmp/terraform.zip -d /tmp/terraform
+        - publish: '$(Build.ArtifactStagingDirectory)/tfplan'
+          artifact: terraform-plan
+          displayName: Publish Terraform Plan
 
-        sudo install /tmp/terraform/terraform /usr/local/bin/terraform
-
-        terraform version
-      displayName: Install Terraform
-
-    - task: AzureCLI@2
-      displayName: Terraform Init and Plan
-      inputs:
-        azureSubscription: $(azureServiceConnection)
-        scriptType: bash
-        scriptLocation: inlineScript
-        workingDirectory: $(terraformWorkingDirectory)
-        inlineScript: |
-          set -euo pipefail
-
-          terraform init -input=false
-
-          terraform validate
-
-          mkdir -p "$(Build.ArtifactStagingDirectory)/terraform-plan"
-
-          echo "Creating Terraform Plan"
-
-          terraform plan \
-            -input=false \
-            -lock-timeout=5m \
-            -out="$(Build.ArtifactStagingDirectory)/terraform-plan/tfplan"
-
-          terraform show -no-color \
-            "$(Build.ArtifactStagingDirectory)/terraform-plan/tfplan" \
-            > "$(Build.ArtifactStagingDirectory)/terraform-plan/plan.txt"
-
-          echo "Terraform Plan completed"
-
-      env:
-        ARM_USE_CLI: 'true'
-        TF_IN_AUTOMATION: 'true'
-        TF_VAR_resource_group_name: '${{ parameters.resourceGroup }}'
-        TF_VAR_location: '${{ parameters.location }}'
-        TF_VAR_vm_count: '${{ parameters.vmCount }}'
-        TF_VAR_vm_size: '${{ parameters.vmSize }}'
-
-    - task: PublishPipelineArtifact@1
-      displayName: Publish Terraform Plan
-      inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)/terraform-plan'
-        artifact: $(artifactName)
-        publishLocation: pipeline
-
-# ==========================================
+# ------------------------------------------------
 # STAGE 3 - MANUAL APPROVAL
-# ==========================================
-
+# ------------------------------------------------
 - stage: Approval
-  displayName: Terraform Deployment Approval
-
+  displayName: Apply Approval
   dependsOn: Plan
-
-  condition: |
-    and(
-      succeeded(),
-      eq('${{ parameters.deploymentAction }}', 'apply')
-    )
+  condition: and(succeeded(), eq('${{ parameters.deploymentAction }}', 'apply'))
 
   jobs:
-  - job: ManualApproval
-    displayName: Approve Terraform Deployment
-
-    pool: server
-
-    timeoutInMinutes: 1440
-
-    steps:
-    - task: ManualValidation@1
+    - job: ManualApproval
+      displayName: Approve Terraform Apply
+      pool: server
       timeoutInMinutes: 1440
 
-      inputs:
-        notifyUsers: ''
-        approvers: ''
-        allowApproversToApproveTheirOwnRuns: true
+      steps:
+        - task: ManualValidation@1
+          timeoutInMinutes: 1440
+          inputs:
+            notifyUsers: ''
+            instructions: |
+              Review the Terraform plan artifact.
+              Approve to continue with infrastructure deployment.
+            onTimeout: reject
 
-        instructions: |
-          Review the Terraform plan before approval.
-
-          Resource Group: ${{ parameters.resourceGroup }}
-          Location: ${{ parameters.location }}
-          VM Count: ${{ parameters.vmCount }}
-          VM Size: ${{ parameters.vmSize }}
-
-          Approve to execute Terraform Apply.
-
-        onTimeout: reject
-
-# ==========================================
-# STAGE 4 - TERRAFORM APPLY
-# ==========================================
-
+# ------------------------------------------------
+# STAGE 4 - APPLY
+# ------------------------------------------------
 - stage: Apply
   displayName: Terraform Apply
-
   dependsOn:
     - Plan
     - Approval
 
-  condition: |
-    and(
-      succeeded(),
-      eq('${{ parameters.deploymentAction }}', 'apply')
+  condition: and(
+    succeeded(),
+    eq('${{ parameters.deploymentAction }}', 'apply')
     )
 
   jobs:
-  - job: TerraformApply
-    displayName: Deploy Azure Infrastructure
+    - job: TerraformApply
+      displayName: Apply Infrastructure
 
-    pool:
-      vmImage: ubuntu-latest
+      steps:
+        - checkout: self
 
-    steps:
-    - checkout: self
+        - download: current
+          artifact: terraform-plan
 
-    - bash: |
-        set -euo pipefail
+        - task: Bash@3
+          displayName: Install Terraform
+          inputs:
+            targetType: inline
+            script: |
+              set -e
+              TF_VERSION="$(terraformVersion)"
+              wget -q https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
+              unzip -o terraform_${TF_VERSION}_linux_amd64.zip
+              sudo install terraform /usr/local/bin/terraform
+              terraform version
 
-        TF_VERSION="$(terraformVersion)"
+        - task: AzureCLI@2
+          displayName: Apply Terraform Plan
+          inputs:
+            azureSubscription: '$(azureServiceConnection)'
+            scriptType: bash
+            scriptLocation: inlineScript
+            inlineScript: |
+              set -e
+              cd "$(terraformWorkingDirectory)"
 
-        curl -fsSLo /tmp/terraform.zip \
-          "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+              export ARM_USE_CLI=true
+              export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 
-        unzip -o /tmp/terraform.zip -d /tmp/terraform
+              terraform init -input=false \
+                -backend-config="resource_group_name=$(tfStateResourceGroup)" \
+                -backend-config="storage_account_name=$(tfStateStorageAccount)" \
+                -backend-config="container_name=$(tfStateContainer)" \
+                -backend-config="key=$(tfStateKey)" \
+                -backend-config="use_azuread_auth=true"
 
-        sudo install /tmp/terraform/terraform /usr/local/bin/terraform
-
-        terraform version
-      displayName: Install Terraform
-
-    - task: DownloadPipelineArtifact@2
-      displayName: Download Terraform Plan
-      inputs:
-        buildType: current
-        artifactName: $(artifactName)
-        targetPath: $(Pipeline.Workspace)/terraform-plan
-
-    - task: AzureCLI@2
-      displayName: Terraform Apply
-      inputs:
-        azureSubscription: $(azureServiceConnection)
-        scriptType: bash
-        scriptLocation: inlineScript
-        workingDirectory: $(terraformWorkingDirectory)
-        inlineScript: |
-          set -euo pipefail
-
-          echo "Initializing Terraform"
-
-          terraform init -input=false
-
-          echo "Applying saved Terraform Plan"
-
-          terraform apply \
-            -input=false \
-            -lock-timeout=5m \
-            "$(Pipeline.Workspace)/terraform-plan/tfplan"
-
-          echo "Terraform deployment completed successfully"
-
-      env:
-        ARM_USE_CLI: 'true'
-        TF_IN_AUTOMATION: 'true'
+              terraform apply \
+                -input=false \
+                -auto-approve \
+                "$(Pipeline.Workspace)/terraform-plan/tfplan"
