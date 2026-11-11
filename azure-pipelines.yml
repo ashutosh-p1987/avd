@@ -63,7 +63,7 @@ stages:
           az account show
  
           echo "Terraform initialization"
-          terraform init -input=false -var="subscription_id=7624824a-7f57-4902-9b9f-9150b5aa9a9d"
+          terraform init -input=false 
  
           echo "Terraform formatting"
           terraform fmt -check -recursive
@@ -73,7 +73,6 @@ stages:
  
           echo "Terraform plan"
           terraform plan \
-            -var="subscription_id=7624824a-7f57-4902-9b9f-9150b5aa9a9d" \
             -input=false \
             -out=tfplan
  
@@ -142,12 +141,11 @@ stages:
           az account show
  
           echo "Terraform initialization"
-          terraform init -input=false -var="subscription_id='7624824a-7f57-4902-9b9f-9150b5aa9a9d'" 
-          terraform plan -input=false -var="subscription_id='7624824a-7f57-4902-9b9f-9150b5aa9a9d'"
+          terraform init -input=false
+          terraform plan -input=false
  
           echo "Applying Terraform plan"
           terraform apply \
-            -var="subscription_id='7624824a-7f57-4902-9b9f-9150b5aa9a9d'" \
             -input=false \
             "$(Pipeline.Workspace)/terraform-plan/tfplan"
  
