@@ -41,7 +41,7 @@ variables:
 
   # Update these values
   azureServiceConnection: 'scret'
-  tfStateResourceGroup: 'rg-terraform-state'
+  tfStateResourceGroup: 'avdrg'
   tfStateStorageAccount: 'terrafotmstate'
   tfStateContainer: 'tfstate'
   tfStateKey: 'avd/terraform.tfstate'
