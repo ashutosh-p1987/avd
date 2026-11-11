@@ -1,28 +1,19 @@
+
 variable "resource_group_name" {
-  type = string
+  description = "Azure Resource Group Name."
+  type        = string
 }
 
 variable "location" {
-  type    = string
-  default = "southeastasia"
-}
-
-variable "vm_count" {
-  type    = number
-  default = 2
-}
-
-variable "vm_size" {
-  type    = string
-  default = "Standard_D4s_v5"
+  description = "Azure deployment region."
+  type        = string
+  default     = "southeastasia"
 }
 
 variable "subscription_id" {
   description = "Azure subscription ID to deploy into."
   type        = string
 }
-
-
 
 variable "prefix" {
   description = "Short prefix used in resource names (lowercase letters/numbers, max 6 chars)."
@@ -36,7 +27,7 @@ variable "prefix" {
 }
 
 variable "environment" {
-  description = "Environment tag/name suffix (e.g. dev, prod)."
+  description = "Environment tag/name suffix."
   type        = string
   default     = "dev"
 }
@@ -62,7 +53,7 @@ variable "session_host_subnet_prefix" {
 }
 
 variable "enable_nat_gateway" {
-  description = "Create a NAT gateway for explicit outbound internet access (recommended; Azure default outbound access is retired for new VNets). If false, the subnet's default outbound access is enabled instead."
+  description = "Create a NAT gateway for explicit outbound internet access."
   type        = bool
   default     = true
 }
@@ -70,7 +61,7 @@ variable "enable_nat_gateway" {
 # ---------------- Host pool ----------------
 
 variable "personal_desktop_assignment_type" {
-  description = "Automatic = user gets the first free host on first sign-in. Direct = admin assigns a host to each user."
+  description = "Automatic or Direct personal desktop assignment."
   type        = string
   default     = "Automatic"
 
@@ -81,29 +72,39 @@ variable "personal_desktop_assignment_type" {
 }
 
 variable "start_vm_on_connect" {
-  description = "Start deallocated session hosts automatically when the assigned user connects."
+  description = "Start deallocated session hosts automatically when users connect."
   type        = bool
   default     = true
 }
 
 variable "registration_token_rotation_days" {
-  description = "How often the host pool registration token is rotated (1-27 days)."
+  description = "Registration token rotation interval (1-27 days)."
   type        = number
   default     = 7
+
+  validation {
+    condition     = var.registration_token_rotation_days >= 1 && var.registration_token_rotation_days <= 27
+    error_message = "Must be between 1 and 27 days."
+  }
 }
 
 # ---------------- Session hosts ----------------
 
 variable "session_host_count" {
-  description = "Number of personal session host VMs (typically one per user)."
+  description = "Number of personal AVD session host VMs."
   type        = number
   default     = 1
+
+  validation {
+    condition     = var.session_host_count >= 1
+    error_message = "Session host count must be at least 1."
+  }
 }
 
 variable "vm_size_1" {
-  description = "Session host VM size."
+  description = "Azure VM size for AVD session hosts."
   type        = string
-  default     = "Standard_D2s_v5"
+  default     = "Standard_D4s_v5"
 }
 
 variable "os_disk_type" {
@@ -113,13 +114,14 @@ variable "os_disk_type" {
 }
 
 variable "image" {
-  description = "Marketplace image for session hosts. Personal desktops use single-session Windows 11 Enterprise."
+  description = "Marketplace image for AVD session hosts."
   type = object({
     publisher = string
     offer     = string
     sku       = string
     version   = string
   })
+
   default = {
     publisher = "MicrosoftWindowsDesktop"
     offer     = "windows-11"
@@ -149,13 +151,13 @@ variable "avd_dsc_artifact_url" {
 # ---------------- Access ----------------
 
 variable "avd_user_upns" {
-  description = "User principal names that can sign in to the personal desktops."
+  description = "User principal names allowed to sign in to personal desktops."
   type        = list(string)
   default     = []
 }
 
 variable "avd_admin_upns" {
-  description = "User principal names that get local admin on session hosts (Virtual Machine Administrator Login)."
+  description = "User principal names granted VM Administrator Login."
   type        = list(string)
   default     = []
 }
