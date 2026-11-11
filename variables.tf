@@ -1,3 +1,22 @@
+variable "resource_group_name" {
+  type = string
+}
+
+variable "location" {
+  type    = string
+  default = "southeastasia"
+}
+
+variable "vm_count" {
+  type    = number
+  default = 2
+}
+
+variable "vm_size" {
+  type    = string
+  default = "Standard_D4s_v5"
+}
+
 variable "subscription_id" {
   description = "Azure subscription ID to deploy into."
   type        = string
