@@ -104,7 +104,7 @@ variable "session_host_count" {
   default     = 1
 }
 
-variable "vm_size" {
+variable "vm_size_1" {
   description = "Session host VM size."
   type        = string
   default     = "Standard_D2s_v5"
