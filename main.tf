@@ -329,9 +329,9 @@ resource "azurerm_role_assignment" "vm_admin_login" {
   #client_id = local.avd_service_principal_client_id
 #}
 
-resource "azurerm_role_assignment" "avd_power_on" {
-  count                = var.start_vm_on_connect ? 1 : 0
-  scope                = azurerm_resource_group.avd.id
-  role_definition_name = "Desktop Virtualization Power On Contributor"
-  principal_id         = data.azuread_service_principal.avd[0].object_id
-}
+#resource "azurerm_role_assignment" "avd_power_on" {
+ # count                = var.start_vm_on_connect ? 1 : 0
+  #scope                = azurerm_resource_group.avd.id
+  #role_definition_name = "Desktop Virtualization Power On Contributor"
+  #principal_id         = data.azuread_service_principal.avd[0].object_id
+#}
