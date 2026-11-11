@@ -8,7 +8,7 @@ locals {
   }, var.tags)
 
   # Intune MDM application ID used by the AADLoginForWindows extension.
-  #intune_mdm_id = "0000000a-0000-0000-c000-000000000000"
+  # intune_mdm_id = "0000000a-0000-0000-c000-000000000000"
 
   # Well-known app ID of the Azure Virtual Desktop service principal.
   #avd_service_principal_client_id = "9cdead84-a844-4324-93f2-b2e6bb768d07"
@@ -238,8 +238,8 @@ resource "azurerm_virtual_machine_extension" "aad_login" {
   type_handler_version       = "2.0"
   auto_upgrade_minor_version = true
 
-  settings = var.enroll_in_intune ? jsonencode({ mdmId = local.intune_mdm_id }) : null
-  tags     = local.tags
+  # settings = var.enroll_in_intune ? jsonencode({ mdmId = local.intune_mdm_id }) : null
+  tags = local.tags
 }
 
 # Install the AVD agent + boot loader and register the VM with the host pool.
@@ -256,11 +256,11 @@ resource "azurerm_virtual_machine_extension" "avd_agent" {
     modulesUrl            = var.avd_dsc_artifact_url
     configurationFunction = "Configuration.ps1\\AddSessionHost"
     properties = {
-      HostPoolName                           = azurerm_virtual_desktop_host_pool.personal.name
-      aadJoin                                = true
-      UseAgentDownloadEndpoint               = true
-      aadJoinPreview                         = false
-      mdmId                                  = var.enroll_in_intune ? local.intune_mdm_id : ""
+      HostPoolName             = azurerm_virtual_desktop_host_pool.personal.name
+      aadJoin                  = true
+      UseAgentDownloadEndpoint = true
+      aadJoinPreview           = false
+      #   mdmId                                  = var.enroll_in_intune ? local.intune_mdm_id : ""
       sessionHostConfigurationLastUpdateTime = ""
       RegistrationInfoTokenCredential = {
         UserName = "PLACEHOLDER_DO_NOT_USE"
@@ -323,15 +323,4 @@ resource "azurerm_role_assignment" "vm_admin_login" {
   principal_id         = each.value.object_id
 }
 
-# Start VM on Connect: the AVD service needs permission to power on VMs.
-#data "azuread_service_principal" "avd" {
- # count     = var.start_vm_on_connect ? 1 : 0
-  #client_id = local.avd_service_principal_client_id
-#}
 
-#resource "azurerm_role_assignment" "avd_power_on" {
- # count                = var.start_vm_on_connect ? 1 : 0
-  #scope                = azurerm_resource_group.avd.id
-  #role_definition_name = "Desktop Virtualization Power On Contributor"
-  #principal_id         = data.azuread_service_principal.avd[0].object_id
-#}
