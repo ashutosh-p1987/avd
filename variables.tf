@@ -106,6 +106,11 @@ variable "vm_size" {
   type        = string
   default     = "Standard_D4s_v5"
 }
+variable "vm_size_1" {
+  description = "Azure VM size for AVD session hosts."
+  type        = string
+  default     = "Standard_D4s_v5"
+}
 
 variable "os_disk_type" {
   description = "OS disk storage type."
