@@ -1,6 +1,6 @@
 # Copy to terraform.tfvars and fill in your values.
 
-subscription_id = "00000000-0000-0000-0000-000000000000"
+subscription_id = "7624824a-7f57-4902-9b9f-9150b5aa9a9d"
 location        = "centralindia"
 prefix          = "avd"
 environment     = "dev"
@@ -13,12 +13,11 @@ start_vm_on_connect              = true
 enroll_in_intune                 = false
 
 avd_user_upns = [
-  "user1@contoso.onmicrosoft.com",
-  "user2@contoso.onmicrosoft.com",
+  "test@ashutoshp1987outlook.onmicrosoft.com"
 ]
 
 avd_admin_upns = [
-  "admin@contoso.onmicrosoft.com",
+  "test@ashutoshp1987outlook.onmicrosoft.com",
 ]
 
 tags = {
