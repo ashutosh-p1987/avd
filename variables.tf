@@ -22,11 +22,7 @@ variable "subscription_id" {
   type        = string
 }
 
-variable "location" {
-  description = "Azure region for all resources."
-  type        = string
-  default     = "centralindia"
-}
+
 
 variable "prefix" {
   description = "Short prefix used in resource names (lowercase letters/numbers, max 6 chars)."
