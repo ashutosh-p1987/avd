@@ -78,7 +78,6 @@ stages:
                 "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
 
               unzip -o "terraform_${TF_VERSION}_linux_amd64.zip"
-
               sudo install terraform /usr/local/bin/terraform
 
               terraform version
@@ -91,10 +90,7 @@ stages:
             script: |
               set -euo pipefail
 
-              echo "Terraform working directory:"
               pwd
-
-              echo "Terraform files:"
               ls -la
 
               test -f main.tf
@@ -102,12 +98,13 @@ stages:
               test -f providers.tf
               test -f backend.tf
 
-              echo "Terraform configuration verified."
+              echo "Terraform files verified."
 
         - task: AzureCLI@2
           displayName: Terraform Format and Validate
           inputs:
             azureSubscription: '$(azureServiceConnection)'
+            addSpnToEnvironment: true
             scriptType: bash
             scriptLocation: inlineScript
             inlineScript: |
@@ -115,8 +112,13 @@ stages:
 
               cd "$(terraformWorkingDirectory)"
 
-              export ARM_USE_CLI=true
+              # Service Principal authentication
+              export ARM_CLIENT_ID="${servicePrincipalId}"
+              export ARM_CLIENT_SECRET="${servicePrincipalKey}"
+              export ARM_TENANT_ID="${tenantId}"
               export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+              export ARM_USE_CLI=false
+              export ARM_USE_AZUREAD=true
 
               terraform fmt -check -diff -recursive
 
@@ -157,7 +159,6 @@ stages:
                 "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
 
               unzip -o "terraform_${TF_VERSION}_linux_amd64.zip"
-
               sudo install terraform /usr/local/bin/terraform
 
               terraform version
@@ -166,6 +167,7 @@ stages:
           displayName: Create Terraform Plan
           inputs:
             azureSubscription: '$(azureServiceConnection)'
+            addSpnToEnvironment: true
             scriptType: bash
             scriptLocation: inlineScript
             inlineScript: |
@@ -173,10 +175,13 @@ stages:
 
               cd "$(terraformWorkingDirectory)"
 
-              export ARM_USE_CLI=true
+              # Service Principal authentication
+              export ARM_CLIENT_ID="${servicePrincipalId}"
+              export ARM_CLIENT_SECRET="${servicePrincipalKey}"
+              export ARM_TENANT_ID="${tenantId}"
               export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
-
-              SUBSCRIPTION_ID="$ARM_SUBSCRIPTION_ID"
+              export ARM_USE_CLI=false
+              export ARM_USE_AZUREAD=true
 
               mkdir -p "$(Build.ArtifactStagingDirectory)"
 
@@ -194,7 +199,7 @@ stages:
                 -lock-timeout=5m \
                 -var="resource_group_name=${{ parameters.resourceGroup }}" \
                 -var="location=${{ parameters.location }}" \
-                -var="subscription_id=${SUBSCRIPTION_ID}" \
+                -var="subscription_id=${ARM_SUBSCRIPTION_ID}" \
                 -var="session_host_count=${{ parameters.vmCount }}" \
                 -var="vm_size_1=${{ parameters.vmSize }}" \
                 -out="$(Build.ArtifactStagingDirectory)/tfplan"
@@ -204,7 +209,7 @@ stages:
           displayName: Publish Terraform Plan
 
 # ==================================================
-# STAGE 3: APPROVAL
+# STAGE 3: MANUAL APPROVAL
 # ==================================================
 
 - stage: Approval
@@ -229,7 +234,7 @@ stages:
             notifyUsers: ''
             instructions: |
               Review the Terraform plan artifact.
-              Approve to proceed with AVD infrastructure deployment.
+              Approve to continue with AVD infrastructure deployment.
             onTimeout: reject
 
 # ==================================================
@@ -271,7 +276,6 @@ stages:
                 "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
 
               unzip -o "terraform_${TF_VERSION}_linux_amd64.zip"
-
               sudo install terraform /usr/local/bin/terraform
 
               terraform version
@@ -280,6 +284,7 @@ stages:
           displayName: Apply Terraform Plan
           inputs:
             azureSubscription: '$(azureServiceConnection)'
+            addSpnToEnvironment: true
             scriptType: bash
             scriptLocation: inlineScript
             inlineScript: |
@@ -287,8 +292,13 @@ stages:
 
               cd "$(terraformWorkingDirectory)"
 
-              export ARM_USE_CLI=true
+              # Service Principal authentication
+              export ARM_CLIENT_ID="${servicePrincipalId}"
+              export ARM_CLIENT_SECRET="${servicePrincipalKey}"
+              export ARM_TENANT_ID="${tenantId}"
               export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+              export ARM_USE_CLI=false
+              export ARM_USE_AZUREAD=true
 
               terraform init -input=false \
                 -backend-config="resource_group_name=$(tfStateResourceGroup)" \
