@@ -8,10 +8,10 @@ locals {
   }, var.tags)
 
   # Intune MDM application ID used by the AADLoginForWindows extension.
-  intune_mdm_id = "0000000a-0000-0000-c000-000000000000"
+  #intune_mdm_id = "0000000a-0000-0000-c000-000000000000"
 
   # Well-known app ID of the Azure Virtual Desktop service principal.
-  avd_service_principal_client_id = "9cdead84-a844-4324-93f2-b2e6bb768d07"
+  #avd_service_principal_client_id = "9cdead84-a844-4324-93f2-b2e6bb768d07"
 }
 
 # =====================================================================
